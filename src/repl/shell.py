@@ -10,7 +10,8 @@ def start_repl(db_file: str = "default.maldb"):
     
     print("=" * 50)
     print("MALDB - Minimal RDBMS")
-    print("Type SQL commands (end with ;) or 'exit;' to quit")
+    print("Type SQL commands or 'exit;' to quit")
+    print("Type 'help;' for available commands")
     print("=" * 50)
     
     # Initialize database
@@ -21,6 +22,12 @@ def start_repl(db_file: str = "default.maldb"):
         print(f"Error initializing database: {e}")
         return
     
+    # Enable command history
+    try:
+        readline.read_history_file(".maldb_history")
+    except FileNotFoundError:
+        pass
+    
     # REPL loop
     while True:
         try:
@@ -29,6 +36,9 @@ def start_repl(db_file: str = "default.maldb"):
             
             if not line:
                 continue
+            
+            # Add to history
+            readline.add_history(line)
             
             # Check for exit command
             if line.lower() in ('exit;', 'quit;', 'exit', 'quit'):
@@ -41,7 +51,19 @@ def start_repl(db_file: str = "default.maldb"):
                 print("  CREATE TABLE name (col1 TYPE, col2 TYPE, ...)")
                 print("  INSERT INTO table VALUES (val1, val2, ...)")
                 print("  SELECT * FROM table")
+                print("  SELECT col1, col2 FROM table")
+                print("  DROP TABLE name")
                 print("  exit; - Exit the program")
+                continue
+            
+            # Check for EXPLAIN
+            if line.upper().startswith('EXPLAIN '):
+                sql = line[8:]  # Remove EXPLAIN keyword
+                try:
+                    result = db.execute(sql)
+                    print("\nQuery executed successfully")
+                except Exception as e:
+                    print(f"\nQuery failed: {e}")
                 continue
             
             # Execute SQL
@@ -56,6 +78,12 @@ def start_repl(db_file: str = "default.maldb"):
         except EOFError:
             print("\nGoodbye!")
             break
+    
+    # Save history
+    try:
+        readline.write_history_file(".maldb_history")
+    except:
+        pass
     
     db.close()
 
