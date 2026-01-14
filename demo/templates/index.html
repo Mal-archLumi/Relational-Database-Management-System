@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MALDB Demo - Home</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧠 MALDB Demo</h1>
+            <p class="subtitle">A minimal RDBMS with column-level encryption</p>
+        </header>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>👥 Users</h3>
+                <p class="count">{{ user_count }}</p>
+                <a href="/users" class="btn">View Users</a>
+            </div>
+            <div class="stat-card">
+                <h3>🛒 Products</h3>
+                <p class="count">{{ product_count }}</p>
+                <a href="/products" class="btn">View Products</a>
+            </div>
+        </div>
+        
+        <div class="features">
+            <h2>✨ Key Features Demonstrated</h2>
+            <ul>
+                <li>✅ CREATE TABLE with various data types</li>
+                <li>✅ INSERT data with automatic encryption for sensitive columns</li>
+                <li>✅ SELECT queries with automatic decryption</li>
+                <li>✅ PRIMARY KEY and UNIQUE constraints</li>
+                <li>✅ Web interface built with FastAPI</li>
+                <li>⭐ <strong>Column-level AES-GCM encryption</strong> for passwords</li>
+            </ul>
+        </div>
+        
+        <div class="actions">
+            <h2>🚀 Quick Actions</h2>
+            <div class="action-buttons">
+                <a href="/users" class="btn primary">Manage Users</a>
+                <a href="/products" class="btn secondary">Manage Products</a>
+            </div>
+        </div>
+        
+        <div class="sql-demo">
+            <h2>💻 Try SQL Commands</h2>
+            <p>Execute SQL directly via API:</p>
+            <pre>
+GET /api/execute?sql=SELECT * FROM users
+GET /api/execute?sql=CREATE TABLE test (id INT, name VARCHAR(50))
+            </pre>
+        </div>
+        
+        <footer>
+            <p>Built for Pesapal Junior Dev Challenge '26 | MALDB v0.1.0</p>
+            <p>Note: Passwords are encrypted at rest using AES-GCM</p>
+        </footer>
+    </div>
+</body>
+</html>

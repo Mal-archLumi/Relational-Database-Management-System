@@ -1,0 +1,192 @@
+"""
+Demo web application using MALDB
+"""
+from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import uvicorn
+import sys
+import os
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.core.database import Database
+
+app = FastAPI(title="MALDB Demo", version="0.1.0")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="demo/static"), name="static")
+
+# Templates
+templates = Jinja2Templates(directory="demo/templates")
+
+# Database instance
+db = Database("demo.maldb")
+
+@app.on_event("startup")
+async def startup():
+    """Initialize demo database"""
+    try:
+        # Create users table if it doesn't exist
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INT PRIMARY KEY,
+                username VARCHAR(50) UNIQUE,
+                email VARCHAR(100),
+                password TEXT ENCRYPTED,
+                age INT,
+                is_active BOOLEAN
+            )
+        """)
+        
+        # Create products table
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id INT PRIMARY KEY,
+                name VARCHAR(100),
+                description TEXT,
+                price DECIMAL(10,2),
+                category VARCHAR(50),
+                in_stock BOOLEAN
+            )
+        """)
+        
+        print("Demo database initialized")
+        
+    except Exception as e:
+        print(f"Warning: Could not initialize demo database: {e}")
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    """Home page"""
+    try:
+        # Get some stats
+        users = db.execute("SELECT * FROM users")
+        products = db.execute("SELECT * FROM products")
+        
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "user_count": len(users),
+            "product_count": len(products)
+        })
+    except Exception as e:
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "user_count": 0,
+            "product_count": 0,
+            "error": str(e)
+        })
+
+@app.get("/users", response_class=HTMLResponse)
+async def list_users(request: Request):
+    """List all users"""
+    try:
+        users = db.execute("SELECT id, username, email, age, is_active FROM users")
+        
+        # Note: We don't select password column for security
+        
+        return templates.TemplateResponse("users.html", {
+            "request": request,
+            "users": users,
+            "count": len(users)
+        })
+    except Exception as e:
+        return templates.TemplateResponse("error.html", {
+            "request": request,
+            "error": str(e)
+        })
+
+@app.get("/products", response_class=HTMLResponse)
+async def list_products(request: Request):
+    """List all products"""
+    try:
+        products = db.execute("SELECT * FROM products")
+        
+        return templates.TemplateResponse("products.html", {
+            "request": request,
+            "products": products,
+            "count": len(products)
+        })
+    except Exception as e:
+        return templates.TemplateResponse("error.html", {
+            "request": request,
+            "error": str(e)
+        })
+
+@app.post("/users/add")
+async def add_user(
+    request: Request,
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    age: int = Form(...)
+):
+    """Add a new user"""
+    try:
+        # Generate ID
+        users = db.execute("SELECT id FROM users")
+        user_ids = [user[0] for user in users]
+        new_id = max(user_ids) + 1 if user_ids else 1
+        
+        # Insert user (password will be automatically encrypted)
+        db.execute(f"""
+            INSERT INTO users (id, username, email, password, age, is_active)
+            VALUES ({new_id}, '{username}', '{email}', '{password}', {age}, true)
+        """)
+        
+        return RedirectResponse(url="/users", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse("error.html", {
+            "request": request,
+            "error": str(e)
+        })
+
+@app.post("/products/add")
+async def add_product(
+    request: Request,
+    name: str = Form(...),
+    description: str = Form(...),
+    price: float = Form(...),
+    category: str = Form(...)
+):
+    """Add a new product"""
+    try:
+        # Generate ID
+        products = db.execute("SELECT id FROM products")
+        product_ids = [product[0] for product in products]
+        new_id = max(product_ids) + 1 if product_ids else 1
+        
+        db.execute(f"""
+            INSERT INTO products (id, name, description, price, category, in_stock)
+            VALUES ({new_id}, '{name}', '{description}', {price}, '{category}', true)
+        """)
+        
+        return RedirectResponse(url="/products", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse("error.html", {
+            "request": request,
+            "error": str(e)
+        })
+
+@app.get("/api/execute")
+async def execute_sql(sql: str):
+    """Execute raw SQL (for demo purposes)"""
+    try:
+        result = db.execute(sql)
+        return {
+            "success": True,
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/health")
+async def health():
+    """Health check"""
+    return {"status": "healthy", "service": "maldb-demo"}
+
+if __name__ == "__main__":
+    print("Starting MALDB demo on http://localhost:8080")
+    uvicorn.run(app, host="0.0.0.0", port=8080)

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Users - MALDB Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>👥 Users Management</h1>
+            <p class="subtitle">Demonstrating CRUD operations with encryption</p>
+        </header>
+        
+        <nav>
+            <a href="/" class="btn">🏠 Home</a>
+            <a href="/products" class="btn">🛒 Products</a>
+        </nav>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Total Users</h3>
+                <p class="count">{{ count }}</p>
+            </div>
+        </div>
+        
+        <div class="features">
+            <h2>📝 Add New User</h2>
+            <form action="/users/add" method="post">
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" required>
+                    <small>Note: This will be encrypted using AES-GCM</small>
+                </div>
+                <div class="form-group">
+                    <label for="age">Age:</label>
+                    <input type="number" id="age" name="age" required min="1">
+                </div>
+                <button type="submit" class="btn primary">Add User</button>
+            </form>
+        </div>
+        
+        <div class="sql-demo">
+            <h2>👤 User List</h2>
+            <p>Showing {{ count }} users (passwords are encrypted and not shown):</p>
+            
+            {% if count > 0 %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Age</th>
+                        <th>Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user[0] }}</td>
+                        <td>{{ user[1] }}</td>
+                        <td>{{ user[2] }}</td>
+                        <td>{{ user[3] }}</td>
+                        <td>{{ "✅" if user[4] else "❌" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No users found. Add some users above!</p>
+            {% endif %}
+        </div>
+        
+        <div class="features">
+            <h2>🔍 SQL Behind the Scenes</h2>
+            <pre>
+-- Table creation with encrypted column
+CREATE TABLE users (
+    id INT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE,
+    email VARCHAR(100),
+    password TEXT ENCRYPTED,  -- ⭐ This column is encrypted!
+    age INT,
+    is_active BOOLEAN
+)
+
+-- Insert (automatic encryption)
+INSERT INTO users VALUES (1, 'alice', 'alice@example.com', 'secret123', 25, true)
+
+-- Select (automatic decryption)
+SELECT id, username, email, age, is_active FROM users
+            </pre>
+        </div>
+        
+        <footer>
+            <p>MALDB Demo | Column-level encryption in action</p>
+        </footer>
+    </div>
+</body>
+</html>
