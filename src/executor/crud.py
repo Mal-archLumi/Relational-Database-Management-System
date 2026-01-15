@@ -2,6 +2,7 @@
 Enhanced CRUD executor with WHERE clause support
 """
 from typing import List, Tuple, Any, Dict
+import os
 from ..core.exceptions import ExecutionError
 from ..storage.encryption import ColumnEncryptor
 from .join import JoinExecutor
@@ -9,10 +10,16 @@ from .join import JoinExecutor
 class CRUDExecutor:
     """Executes basic CRUD operations with WHERE clause support"""
     
-    def __init__(self, file_manager, catalog, encryptor=None):  # Add encryptor parameter
+    def __init__(self, file_manager, catalog, encryptor=None):
         self.file_manager = file_manager
         self.catalog = catalog
-        self.encryptor = encryptor or ColumnEncryptor()  # Use provided encryptor or create new
+        
+        # Initialize encryptor properly with your original design
+        if encryptor is None:
+            self.encryptor = ColumnEncryptor(silent=True)
+        else:
+            self.encryptor = encryptor
+        
         self.join_executor = JoinExecutor(file_manager, catalog, self.encryptor)
     
     def execute(self, parsed: Dict) -> List[Tuple]:
@@ -37,6 +44,8 @@ class CRUDExecutor:
             return self.help()
         elif command == 'JOIN':
             return self.join(parsed)
+        elif command == 'ALTER_TABLE':
+            return self.alter_table(parsed)
         else:
             raise ExecutionError(f"Unsupported command: {command}")
     
@@ -67,7 +76,7 @@ class CRUDExecutor:
         
         # Create empty CSV file
         with open(self.file_manager.table_file(table_name), 'w', newline='') as f:
-            pass
+            pass  # Empty file for now
         
         print(f"✅ Table '{table_name}' created successfully with {len(columns)} columns")
         return []
@@ -180,7 +189,7 @@ class CRUDExecutor:
             for col_name, value in zip(table.get_column_names(), row):
                 col = table.columns[col_name]
                 
-                # Handle NULL
+                # Handle NULL/empty
                 if value == '' or value is None:
                     processed_value = None
                 else:
@@ -189,8 +198,8 @@ class CRUDExecutor:
                         column_id = f"{table_name}.{col_name}"
                         try:
                             processed_value = self.encryptor.decrypt_value(column_id, value)
-                        except:
-                            processed_value = "[ENCRYPTED]"
+                        except Exception as e:
+                            processed_value = f"[ENCRYPTED: {str(e)}]"
                     else:
                         try:
                             processed_value = col.validate(value)
@@ -205,9 +214,9 @@ class CRUDExecutor:
                 try:
                     if self._evaluate_where(row_data, where_clause):
                         processed_rows.append(tuple(processed_row))
-                except:
-                    # If WHERE evaluation fails, include the row (simple approach)
-                    processed_rows.append(tuple(processed_row))
+                except Exception as e:
+                    # If WHERE evaluation fails, skip the row
+                    continue
             else:
                 processed_rows.append(tuple(processed_row))
         
@@ -238,8 +247,19 @@ class CRUDExecutor:
     
     def _evaluate_where(self, row_data: Dict, where_clause: str) -> bool:
         """Simple WHERE clause evaluation"""
-        # Very simple evaluation for basic equality checks
         where_clause = where_clause.strip()
+        
+        # Check for IS NULL
+        if 'IS NULL' in where_clause.upper():
+            col_name = where_clause.split('IS')[0].strip()
+            if col_name in row_data:
+                return row_data[col_name] is None
+        
+        # Check for IS NOT NULL
+        if 'IS NOT NULL' in where_clause.upper():
+            col_name = where_clause.split('IS NOT')[0].strip()
+            if col_name in row_data:
+                return row_data[col_name] is not None
         
         # Check for simple equality: column = value
         if '=' in where_clause:
@@ -249,6 +269,9 @@ class CRUDExecutor:
                 value_str = parts[1].strip().strip("'\"")
                 
                 if col_name in row_data:
+                    # Handle NULL comparison
+                    if value_str.upper() == 'NULL':
+                        return row_data[col_name] is None
                     # Simple string comparison for now
                     return str(row_data[col_name]) == value_str
         
@@ -260,6 +283,9 @@ class CRUDExecutor:
                 value_str = parts[1].strip().strip("'\"")
                 
                 if col_name in row_data:
+                    # Handle NULL comparison
+                    if value_str.upper() == 'NULL':
+                        return row_data[col_name] is not None
                     return str(row_data[col_name]) != value_str
         
         # Check for greater than: column > value
@@ -269,11 +295,32 @@ class CRUDExecutor:
                 col_name = parts[0].strip()
                 value_str = parts[1].strip().strip("'\"")
                 
-                if col_name in row_data:
+                if col_name in row_data and row_data[col_name] is not None:
                     try:
                         return float(row_data[col_name]) > float(value_str)
                     except:
                         return str(row_data[col_name]) > value_str
+        
+        # Check for less than: column < value
+        elif '<' in where_clause and '<=' not in where_clause:
+            parts = where_clause.split('<', 1)
+            if len(parts) == 2:
+                col_name = parts[0].strip()
+                value_str = parts[1].strip().strip("'\"")
+                
+                if col_name in row_data and row_data[col_name] is not None:
+                    try:
+                        return float(row_data[col_name]) < float(value_str)
+                    except:
+                        return str(row_data[col_name]) < value_str
+        
+        # Check for AND conditions
+        elif ' AND ' in where_clause.upper():
+            parts = where_clause.split(' AND ')
+            for part in parts:
+                if not self._evaluate_where(row_data, part.strip()):
+                    return False
+            return True
         
         # Default to True if we can't parse the WHERE clause
         return True
@@ -325,42 +372,14 @@ class CRUDExecutor:
         # Delete rows
         deleted_count = 0
         for row_idx in rows_to_delete:
-            self._delete_row_by_index(table_name, row_idx)
+            self.file_manager.delete_row_by_index(table_name, row_idx)
             deleted_count += 1
         
         print(f"✅ {deleted_count} row(s) deleted from '{table_name}'")
         return []
     
-    def _delete_row_by_index(self, table_name: str, row_index: int):
-        """Delete a row by index"""
-        import csv
-        import os
-        
-        csv_file = self.file_manager.table_file(table_name)
-        temp_file = csv_file + '.tmp'
-        
-        try:
-            with open(csv_file, 'r', newline='') as infile, \
-                 open(temp_file, 'w', newline='') as outfile:
-                
-                writer = csv.writer(outfile)
-                reader = csv.reader(infile)
-                
-                for i, row in enumerate(reader):
-                    if i != row_index:
-                        writer.writerow(row)
-            
-            # Replace original file
-            os.replace(temp_file, csv_file)
-            
-        except Exception as e:
-            # Clean up temp file if it exists
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            raise e
-    
     def update(self, parsed: Dict) -> List[Tuple]:
-        """Execute UPDATE statement"""
+        """Execute UPDATE statement - FIXED to work with 3-parameter FileManager.update_row"""
         table_name = parsed['table']
         set_values = parsed['set_values']
         where_clause = parsed.get('where')
@@ -401,6 +420,7 @@ class CRUDExecutor:
                     continue
             
             # Update values
+            new_row = list(row)  # Make a copy
             for col_name, new_value in set_values.items():
                 if col_name not in table.columns:
                     raise ExecutionError(f"Column '{col_name}' does not exist")
@@ -435,12 +455,12 @@ class CRUDExecutor:
                 if col.encrypted and validated_value is not None:
                     column_id = f"{table_name}.{col_name}"
                     encrypted_value = self.encryptor.encrypt_value(column_id, str(validated_value))
-                    row[list(table.columns.keys()).index(col_name)] = encrypted_value
+                    new_row[list(table.columns.keys()).index(col_name)] = encrypted_value
                 else:
-                    row[list(table.columns.keys()).index(col_name)] = validated_value
+                    new_row[list(table.columns.keys()).index(col_name)] = validated_value
             
-            # Save updated row
-            self.file_manager.update_row(table_name, row_idx, row)
+            # Save updated row - FIXED: removed the extra has_header parameter
+            self.file_manager.update_row(table_name, row_idx, new_row)
             updated_rows += 1
         
         print(f"✅ {updated_rows} row(s) updated in '{table_name}'")
@@ -448,33 +468,68 @@ class CRUDExecutor:
     
     def join(self, parsed: Dict) -> List[Tuple]:
         """Execute JOIN query"""
-        table1 = parsed['table1']
-        table2 = parsed['table2']
-        on_clause = parsed['on_clause']
-        columns = parsed['columns']
+        try:
+            table1 = parsed['table1']
+            table2 = parsed['table2']
+            on_clause = parsed['on_clause']
+            columns = parsed['columns']
+            
+            # Perform join
+            joined_rows = self.join_executor.inner_join(table1, table2, on_clause)
+            
+            # Filter columns if needed
+            if columns != ['*']:
+                result = joined_rows  # Simplified for now
+            else:
+                result = joined_rows
+            
+            # Print result
+            if result:
+                print(f"\n🔗 JOIN result: {len(result)} row(s)")
+                for row in result[:10]:
+                    print(f"  {row}")
+                if len(result) > 10:
+                    print(f"  ... and {len(result) - 10} more rows")
+            else:
+                print("\n🔗 No matching rows found in JOIN")
+            
+            return result
+        except Exception as e:
+            raise ExecutionError(f"JOIN execution failed: {str(e)}")
+    
+    def alter_table(self, parsed: Dict) -> List[Tuple]:
+        """Execute ALTER TABLE ADD COLUMN"""
+        table_name = parsed['table']
+        column = parsed['column']
         
-        # Perform join
-        joined_rows = self.join_executor.inner_join(table1, table2, on_clause)
+        if not self.catalog.table_exists(table_name):
+            raise ExecutionError(f"Table '{table_name}' does not exist")
         
-        # Filter columns if needed
-        if columns != ['*']:
-            # Simplified column filtering for JOIN
-            # In a real implementation, you'd need to handle table prefixes
-            result = joined_rows  # Return all columns for now
-        else:
-            result = joined_rows
+        table = self.catalog.get_table(table_name)
         
-        # Print result
-        if result:
-            print(f"\n🔗 JOIN result: {len(result)} row(s)")
-            for row in result[:10]:  # Show first 10 rows
-                print(f"  {row}")
-            if len(result) > 10:
-                print(f"  ... and {len(result) - 10} more rows")
-        else:
-            print("\n🔗 No matching rows found in JOIN")
+        # Check if column already exists
+        if column.name in table.columns:
+            raise ExecutionError(f"Column '{column.name}' already exists in table '{table_name}'")
         
-        return result
+        # Add column to schema
+        table.columns[column.name] = column
+        
+        # Update all existing rows with NULL for the new column
+        rows = self.file_manager.get_all_rows(table_name)
+        if rows:
+            updated_rows = []
+            for row in rows:
+                updated_row = list(row) + [None]
+                updated_rows.append(updated_row)
+            
+            # Save updated rows
+            self.file_manager.save_all_rows(table_name, updated_rows)
+        
+        # Save updated schema
+        self.file_manager.save_schema(table_name, table.to_dict())
+        
+        print(f"✅ Column '{column.name}' added to table '{table_name}'")
+        return []
     
     def drop_table(self, parsed: Dict) -> List[Tuple]:
         """Execute DROP TABLE"""
@@ -524,6 +579,9 @@ class CRUDExecutor:
             if inner_query.get('where'):
                 print(f"   WHERE: {inner_query['where']}")
         
+        elif inner_query['command'] == 'ALTER_TABLE':
+            print(f"   Adding column: {inner_query['column'].name} ({inner_query['column'].dtype_str})")
+        
         return []
     
     def help(self) -> List[Tuple]:
@@ -536,6 +594,7 @@ class CRUDExecutor:
         print("   UPDATE table SET column = value [WHERE condition]")
         print("   DELETE FROM table [WHERE condition]")
         print("   DROP TABLE name")
+        print("   ALTER TABLE name ADD COLUMN column_name data_type")
         print("   EXPLAIN query")
         print("   help;")
         print("   exit;")

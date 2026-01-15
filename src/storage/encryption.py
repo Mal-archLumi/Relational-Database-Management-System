@@ -15,7 +15,7 @@ from ..core.exceptions import EncryptionError
 class ColumnEncryptor:
     """Encrypt/decrypt values for specific columns"""
     
-    def __init__(self, master_key: Optional[bytes] = None, key_file: str = None, silent: bool = False):
+    def __init__(self, master_key: Optional[bytes] = None, key_file: str = "maldb_keys.json", silent: bool = False):
         """
         Initialize encryptor with master key
         
@@ -25,7 +25,14 @@ class ColumnEncryptor:
             silent: If True, don't print warnings
         """
         self.silent = silent
-        # ... rest of __init__
+        self.key_file = key_file
+        self.column_keys: dict = {}  # Initialize column_keys dictionary
+        
+        # Set master key
+        if master_key:
+            self.master_key = master_key
+        else:
+            self.master_key = self._get_or_create_master_key()
     
     def _get_or_create_master_key(self) -> bytes:
         """Get master key from environment, file, or generate new"""
@@ -52,7 +59,7 @@ class ColumnEncryptor:
             
             # Save to file for persistence
             try:
-                os.makedirs(os.path.dirname(self.key_file), exist_ok=True)
+                os.makedirs(os.path.dirname(self.key_file) if os.path.dirname(self.key_file) else '.', exist_ok=True)
                 with open(self.key_file, 'w') as f:
                     json.dump({
                         'master_key': key_hex,
@@ -69,6 +76,11 @@ class ColumnEncryptor:
             return bytes.fromhex(key_hex)
         except ValueError:
             raise EncryptionError("Master key must be valid hex string")
+    
+    def _generate_key(self) -> bytes:
+        """Generate a random encryption key - this is the missing method"""
+        import secrets
+        return secrets.token_bytes(32)
     
     def get_column_key(self, column_id: str, salt: bytes = None) -> bytes:
         """
@@ -112,7 +124,7 @@ class ColumnEncryptor:
             Base64-encoded ciphertext with nonce
         """
         if plaintext is None:
-            return None
+            return ""
         
         key = self.get_column_key(column_id)
         aesgcm = AESGCM(key)
@@ -142,8 +154,8 @@ class ColumnEncryptor:
         Returns:
             Decrypted plaintext string
         """
-        if encrypted is None:
-            return None
+        if encrypted is None or encrypted == "":
+            return ""
         
         try:
             key = self.get_column_key(column_id)
@@ -167,5 +179,14 @@ class ColumnEncryptor:
             
         except Exception as e:
             # If decryption fails, return placeholder
-            print(f"⚠️  Decryption failed for {column_id}: {e}")
+            if not self.silent:
+                print(f"⚠️  Decryption failed for {column_id}: {e}")
             return "[ENCRYPTED]"
+    
+    def bulk_encrypt(self, column_id: str, values: list) -> list:
+        """Encrypt multiple values for a column"""
+        return [self.encrypt_value(column_id, str(v)) if v is not None else "" for v in values]
+    
+    def bulk_decrypt(self, column_id: str, encrypted_values: list) -> list:
+        """Decrypt multiple values for a column"""
+        return [self.decrypt_value(column_id, v) if v else "" for v in encrypted_values]

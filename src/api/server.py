@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Any
 from ..core.database import Database
+from ..core.exceptions import ParseError, ExecutionError
 from .models import QueryRequest, QueryResponse, DatabaseInfo, TableInfo
 
 app = FastAPI(title="MALDB API", version="0.1.0")
@@ -49,10 +50,17 @@ async def shutdown_event():
     if db_instance:
         db_instance.close()
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/api/execute", response_model=QueryResponse)
 async def execute_query(request: QueryRequest):
     """Execute a SQL query"""
     global db_instance
+    
+    if not db_instance:
+        return QueryResponse(
+            success=False,
+            error="Database not initialized",
+            execution_time_ms=0
+        )
     
     start_time = time.time()
     
@@ -68,10 +76,20 @@ async def execute_query(request: QueryRequest):
             execution_time_ms=(time.time() - start_time) * 1000
         )
         
-    except Exception as e:
+    except (ParseError, ExecutionError) as e:
+        # These are expected errors from invalid SQL
         return QueryResponse(
             success=False,
             error=str(e),
+            execution_time_ms=(time.time() - start_time) * 1000
+        )
+    except Exception as e:
+        # Unexpected server errors
+        import traceback
+        traceback.print_exc()
+        return QueryResponse(
+            success=False,
+            error=f"Internal server error: {str(e)}",
             execution_time_ms=(time.time() - start_time) * 1000
         )
 
@@ -81,8 +99,9 @@ async def list_tables():
     global db_instance
     
     try:
-        # For now, return table names from catalog
-        # In a real implementation, we'd query the system catalog
+        if not db_instance:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        
         tables = list(db_instance.catalog.tables.keys())
         return tables
     except Exception as e:
@@ -94,6 +113,9 @@ async def get_table_info(table_name: str):
     global db_instance
     
     try:
+        if not db_instance:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        
         if table_name not in db_instance.catalog.tables:
             raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
         
@@ -119,7 +141,13 @@ async def get_table_info(table_name: str):
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "maldb-api"}
+    try:
+        if db_instance:
+            return {"status": "healthy", "service": "maldb-api", "tables": len(db_instance.catalog.tables)}
+        else:
+            return {"status": "starting", "service": "maldb-api"}
+    except Exception:
+        return {"status": "unhealthy", "service": "maldb-api"}
 
 @app.get("/")
 async def root():
@@ -128,7 +156,7 @@ async def root():
         "service": "MALDB API",
         "version": "0.1.0",
         "endpoints": {
-            "/query": "POST - Execute SQL query",
+            "/api/execute": "POST - Execute SQL query",
             "/tables": "GET - List all tables",
             "/tables/{name}": "GET - Get table info",
             "/health": "GET - Health check",

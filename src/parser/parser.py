@@ -42,8 +42,10 @@ class SimpleParser:
                 return self._parse_explain(sql)
             elif upper_sql.startswith('HELP'):
                 return {'command': 'HELP'}
+            elif upper_sql.startswith('ALTER TABLE'):
+                return self._parse_alter_table(sql)
             else:
-                raise ParseError(f"Unsupported SQL command. Try: CREATE TABLE, INSERT, SELECT, UPDATE, DELETE, DROP TABLE")
+                raise ParseError(f"Unsupported SQL command. Try: CREATE TABLE, INSERT, SELECT, UPDATE, DELETE, DROP TABLE, ALTER TABLE")
         except ParseError:
             raise
         except Exception as e:
@@ -66,7 +68,7 @@ class SimpleParser:
             cleaned = cleaned[:-1].strip()
         
         # Handle multiple commands separated by semicolons
-        if ';' in cleaned:
+        if ';' in cleaned and cleaned.count(';') > 1:
             # For now, just take the first command
             cleaned = cleaned.split(';')[0].strip()
         
@@ -128,7 +130,7 @@ class SimpleParser:
         current = []
         in_quotes = False
         quote_char = None
-        paren_depth = 0  # FIXED: Initialize paren_depth here
+        paren_depth = 0
         
         for char in col_def:
             if char in ('\'', '"') and not in_quotes:
@@ -468,6 +470,35 @@ class SimpleParser:
             'table1': table1,
             'table2': table2,
             'on_clause': on_clause
+        }
+    
+    def _parse_alter_table(self, sql: str) -> Dict:
+        """Parse ALTER TABLE statement"""
+        # Pattern: ALTER TABLE table_name ADD COLUMN column_name data_type
+        pattern = r'ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)\s+([\w()]+)'
+        match = re.match(pattern, sql, re.IGNORECASE)
+        
+        if not match:
+            raise ParseError("Invalid ALTER TABLE syntax. Format: ALTER TABLE table_name ADD COLUMN column_name data_type")
+        
+        table_name = match.group(1).strip()
+        column_name = match.group(2).strip()
+        column_type = match.group(3).strip()
+        
+        if not table_name:
+            raise ParseError("Table name cannot be empty")
+        if not column_name:
+            raise ParseError("Column name cannot be empty")
+        if not column_type:
+            raise ParseError("Column type cannot be empty")
+        
+        # Create a column object
+        column = Column(column_name, column_type)
+        
+        return {
+            'command': 'ALTER_TABLE',
+            'table': table_name,
+            'column': column
         }
     
     def _parse_values(self, values_str: str) -> List:

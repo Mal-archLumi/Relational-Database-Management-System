@@ -67,11 +67,11 @@ class FileManager:
     
     def update_row(self, table_name: str, row_index: int, new_row: List):
         """Update a specific row in a table"""
-        csv_file = self.table_file(table_name)
-        temp_file = csv_file + '.tmp'
+        file_path = self.table_file(table_name)
+        temp_file = file_path + '.tmp'
         
         try:
-            with open(csv_file, 'r', newline='') as infile, \
+            with open(file_path, 'r', newline='') as infile, \
                  open(temp_file, 'w', newline='') as outfile:
                 
                 writer = csv.writer(outfile)
@@ -84,17 +84,48 @@ class FileManager:
                         writer.writerow(row)
             
             # Replace original file
-            import os
-            os.replace(temp_file, csv_file)
+            os.replace(temp_file, file_path)
             
         except Exception as e:
             # Clean up temp file if it exists
-            import os
             if os.path.exists(temp_file):
                 os.remove(temp_file)
             raise e
     
-    
     def table_exists(self, table_name: str) -> bool:
         """Check if table exists"""
         return os.path.exists(self.schema_file(table_name))
+    
+    def delete_row_by_index(self, table_name: str, row_index: int):
+        """Delete a row by index"""
+        file_path = self.table_file(table_name)
+        temp_file = file_path + '.tmp'
+        
+        try:
+            with open(file_path, 'r', newline='') as infile, \
+                 open(temp_file, 'w', newline='') as outfile:
+                
+                writer = csv.writer(outfile)
+                reader = csv.reader(infile)
+                
+                for i, row in enumerate(reader):
+                    if i != row_index:
+                        writer.writerow(row)
+            
+            # Replace original file
+            os.replace(temp_file, file_path)
+            
+        except Exception as e:
+            # Clean up temp file if it exists
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            raise e
+    
+    def save_all_rows(self, table_name: str, rows: List[List]):
+        """Save all rows to CSV file (overwrites existing)"""
+        file_path = self.table_file(table_name)
+        
+        with open(file_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            for row in rows:
+                writer.writerow(row)
