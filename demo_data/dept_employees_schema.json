@@ -1,0 +1,30 @@
+{
+  "name": "dept_employees",
+  "columns": {
+    "emp_id": {
+      "name": "emp_id",
+      "dtype": "INT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "dept_id": {
+      "name": "dept_id",
+      "dtype": "INT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "role": {
+      "name": "role",
+      "dtype": "VARCHAR(50)",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    }
+  },
+  "primary_key": null
+}

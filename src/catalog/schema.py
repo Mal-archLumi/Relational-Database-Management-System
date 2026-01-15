@@ -16,8 +16,10 @@ class Column:
             type_name, rest = self.dtype_str.split('(', 1)
             params = rest.rstrip(')').split(',')
             if type_name == 'VARCHAR':
-                self.dtype = TYPE_MAP['VARCHAR']
-                self.dtype.max_length = int(params[0])
+                # Create a new StringType instance for each column
+                from ..core.datatypes import StringType
+                max_length = int(params[0].strip())
+                self.dtype = StringType(max_length=max_length)
             else:
                 self.dtype = TYPE_MAP.get(type_name, TYPE_MAP['VARCHAR'])
         else:
@@ -31,9 +33,11 @@ class Column:
     
     def validate(self, value):
         """Validate and convert value to correct type"""
-        if value is None and self.not_null:
-            raise ValueError(f"Column {self.name} cannot be NULL")
-        return self.dtype.validate(value) if value is not None else None
+        if value is None:
+            if self.not_null:
+                raise ValueError(f"Column {self.name} cannot be NULL")
+            return None
+        return self.dtype.validate(value)
     
     def to_dict(self):
         """Convert to dictionary for serialization"""

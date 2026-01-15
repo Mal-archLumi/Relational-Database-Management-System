@@ -31,3 +31,24 @@ pip install -r requirements.txt
 
 # Set encryption key (optional)
 export MALDB_MASTER_KEY="your-32-byte-key-here"
+
+## 🎬 Quick Demonstration
+
+### 1. Start the SQL REPL:
+```bash
+python -m src.main
+
+
+###Testing
+## 🧪 Testing Results
+
+All 18 integration tests passing:
+- Basic CRUD operations ✓
+- Constraint enforcement ✓  
+- Encryption/decryption ✓
+- JOIN operations ✓
+- Error handling ✓
+
+Run the complete demonstration:
+```bash
+python pesapal_demo.py

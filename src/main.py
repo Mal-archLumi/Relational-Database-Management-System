@@ -4,9 +4,14 @@ MALDB - Main entry point
 """
 
 import sys
+import os
+
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import argparse
-from .repl.shell import start_repl
-from .api.server import start_api_server
+from src.repl.shell import start_repl
+from src.api.server import start_api_server
 
 def main():
     parser = argparse.ArgumentParser(
@@ -35,6 +40,7 @@ def main():
     parser.add_argument(
         'file',
         nargs='?',
+        default="default.maldb",
         help='Database file to open (creates if not exists)'
     )
     

@@ -1,0 +1,38 @@
+{
+  "name": "orders",
+  "columns": {
+    "order_id": {
+      "name": "order_id",
+      "dtype": "INT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "customer": {
+      "name": "customer",
+      "dtype": "VARCHAR(50)",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "amount": {
+      "name": "amount",
+      "dtype": "DECIMAL(10,2)",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "status": {
+      "name": "status",
+      "dtype": "VARCHAR(20)",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    }
+  },
+  "primary_key": null
+}

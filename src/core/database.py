@@ -1,5 +1,5 @@
 """
-Main database interface
+Main database interface with persistent encryption
 """
 
 import os
@@ -10,6 +10,7 @@ from ..storage.file_manager import FileManager
 from ..catalog.schema import Catalog, TableSchema
 from ..parser.parser import SimpleParser
 from ..executor.crud import CRUDExecutor
+from ..storage.encryption import ColumnEncryptor
 
 class Database:
     """Main database class"""
@@ -25,7 +26,12 @@ class Database:
         self.file_manager = FileManager(db_file)
         self.catalog = Catalog()
         self.parser = SimpleParser()
-        self.executor = CRUDExecutor(self.file_manager, self.catalog)
+        
+        # Create encryptor with key file in same directory as database
+        key_file = os.path.join(os.path.dirname(db_file), "maldb_key.json")
+        self.encryptor = ColumnEncryptor(key_file=key_file)
+        
+        self.executor = CRUDExecutor(self.file_manager, self.catalog, self.encryptor)
         
         # Load existing tables
         self._load_tables()
