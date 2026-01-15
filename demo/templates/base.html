@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MALDB Professional Interface{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/script.js" defer></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">M</div>
+                <span>MALDB</span>
+            </div>
+            
+            <div class="header-actions">
+                <div class="status-indicator status-online"></div>
+                <span style="font-size: 13px; color: var(--text-secondary);">Connected</span>
+                <div style="width: 1px; height: 20px; background: var(--border-dark); margin: 0 12px;"></div>
+                <button class="toolbar-btn" onclick="window.open('/api/docs', '_blank')">
+                    API Docs
+                </button>
+            </div>
+        </header>
+        
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="nav-section">
+                <div class="nav-title">Navigation</div>
+                <a href="#" class="nav-item active" data-page="query">
+                    <span>📝 Query Editor</span>
+                </a>
+                <a href="#" class="nav-item" data-page="tables">
+                    <span>📊 Tables</span>
+                </a>
+                <a href="#" class="nav-item" data-page="history">
+                    <span>📜 History</span>
+                </a>
+                <a href="#" class="nav-item" data-page="monitor">
+                    <span>📈 Monitor</span>
+                </a>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-title">Database</div>
+                <a href="#" class="nav-item">
+                    <span>Default</span>
+                    <span class="badge badge-success" style="margin-left: auto;">Active</span>
+                </a>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-title">Quick Actions</div>
+                <a href="#" class="nav-item quick-action" data-sql="CREATE TABLE users (id INT PRIMARY KEY, username VARCHAR(50), email VARCHAR(100), password TEXT ENCRYPTED, age INT, is_active BOOLEAN)">
+                    <span>📄 Create Users Table</span>
+                </a>
+                <a href="#" class="nav-item quick-action" data-sql="INSERT INTO users VALUES (1, 'admin', 'admin@example.com', 'securepassword123', 25, true)">
+                    <span>➕ Insert Sample Data</span>
+                </a>
+                <a href="#" class="nav-item quick-action" data-sql="SELECT * FROM users">
+                    <span>👥 Query All Users</span>
+                </a>
+            </div>
+            
+            <div class="nav-section" style="margin-top: auto;">
+                <div class="nav-title">System</div>
+                <div style="padding: var(--spacing-sm) var(--spacing-md); font-size: 12px; color: var(--text-tertiary);">
+                    <div>MALDB v1.0.0</div>
+                    <div>Pesapal Challenge 2026</div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</body>
+</html>
