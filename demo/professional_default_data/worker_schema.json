@@ -1,0 +1,54 @@
+{
+  "name": "worker",
+  "columns": {
+    "id": {
+      "name": "id",
+      "dtype": "INT",
+      "primary_key": true,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "username": {
+      "name": "username",
+      "dtype": "VARCHAR(50)",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "email": {
+      "name": "email",
+      "dtype": "VARCHAR(100)",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "password": {
+      "name": "password",
+      "dtype": "TEXT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": true
+    },
+    "age": {
+      "name": "age",
+      "dtype": "INT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    },
+    "is_active": {
+      "name": "is_active",
+      "dtype": "BOOLEAN",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false,
+      "encrypted": false
+    }
+  },
+  "primary_key": "id"
+}

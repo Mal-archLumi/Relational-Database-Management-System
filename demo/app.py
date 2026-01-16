@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 import uvicorn
 import os
 import sys
@@ -80,19 +81,73 @@ class DatabaseManager:
         try:
             db = cls.get_db(db_name)
             
-            # Check data directory for schema files
-            data_dir = db._storage.data_dir
-            tables = []
+            # Method 1: Get tables from catalog (this should work)
+            try:
+                # Access the catalog directly
+                catalog = db.catalog
+                tables = list(catalog.tables.keys())
+                if tables:
+                    print(f"Found {len(tables)} tables in catalog: {tables}")
+                    return tables
+            except AttributeError as e:
+                print(f"Could not access catalog: {e}")
             
-            if os.path.exists(data_dir):
-                schema_files = glob.glob(os.path.join(data_dir, "*_schema.json"))
-                for schema_file in schema_files:
-                    table_name = os.path.basename(schema_file).replace("_schema.json", "")
-                    tables.append(table_name)
+            # Method 2: Check data directory for schema files
+            try:
+                file_manager = db.file_manager
+                data_dir = file_manager.data_dir
+                tables = []
+                
+                if os.path.exists(data_dir):
+                    schema_files = glob.glob(os.path.join(data_dir, "*_schema.json"))
+                    for schema_file in schema_files:
+                        table_name = os.path.basename(schema_file).replace("_schema.json", "")
+                        tables.append(table_name)
+                
+                if tables:
+                    print(f"Found {len(tables)} tables in data directory: {tables}")
+                    return tables
+            except AttributeError as e:
+                print(f"Could not access file manager: {e}")
             
-            return tables
+            # Method 3: Look for any CSV files
+            try:
+                file_manager = db.file_manager
+                data_dir = file_manager.data_dir
+                tables = []
+                
+                if os.path.exists(data_dir):
+                    csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
+                    for csv_file in csv_files:
+                        table_name = os.path.basename(csv_file).replace(".csv", "")
+                        # Check if schema exists too
+                        schema_file = os.path.join(data_dir, f"{table_name}_schema.json")
+                        if os.path.exists(schema_file):
+                            tables.append(table_name)
+                
+                if tables:
+                    print(f"Found {len(tables)} tables from CSV files: {tables}")
+                    return tables
+            except Exception as e:
+                print(f"Error checking CSV files: {e}")
+            
+            # Method 4: Get directly from database instance
+            try:
+                # Try to get from database's internal structure
+                if hasattr(db, 'catalog') and hasattr(db.catalog, 'tables'):
+                    tables = list(db.catalog.tables.keys())
+                    print(f"Found {len(tables)} tables from db.catalog: {tables}")
+                    return tables
+            except Exception as e:
+                print(f"Error accessing db.catalog: {e}")
+            
+            print("No tables found using any method")
+            return []
+            
         except Exception as e:
             print(f"Error getting tables: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     @classmethod
@@ -101,33 +156,86 @@ class DatabaseManager:
         try:
             db = cls.get_db(db_name)
             
-            # Read schema from file
-            data_dir = db._storage.data_dir
-            schema_file = os.path.join(data_dir, f"{table_name}_schema.json")
+            # Method 1: Try to get from catalog
+            try:
+                if table_name in db.catalog.tables:
+                    table = db.catalog.tables[table_name]
+                    schema = []
+                    for col_name, col in table.columns.items():
+                        schema.append({
+                            "name": col_name,
+                            "type": col.dtype_str,
+                            "primary_key": col.primary_key,
+                            "unique": col.unique,
+                            "nullable": not col.not_null,  # Invert not_null to nullable
+                            "encrypted": col.encrypted,
+                            "default": None  # We don't track defaults
+                        })
+                    return schema
+            except Exception as e:
+                print(f"Could not get schema from catalog: {e}")
             
-            if not os.path.exists(schema_file):
-                return None
+            # Method 2: Read schema from file
+            try:
+                file_manager = db.file_manager
+                data_dir = file_manager.data_dir
+                schema_file = os.path.join(data_dir, f"{table_name}_schema.json")
+                
+                if os.path.exists(schema_file):
+                    with open(schema_file, 'r') as f:
+                        schema_data = json.load(f)
+                    
+                    # Convert to consistent format
+                    schema = []
+                    if 'columns' in schema_data:
+                        for col_name, col_info in schema_data['columns'].items():
+                            schema.append({
+                                "name": col_name,
+                                "type": col_info.get('dtype_str', col_info.get('type', 'VARCHAR')),
+                                "primary_key": col_info.get('primary_key', False),
+                                "unique": col_info.get('unique', False),
+                                "nullable": not col_info.get('not_null', False),  # Invert not_null
+                                "encrypted": col_info.get('encrypted', False),
+                                "default": col_info.get('default')
+                            })
+                        return schema
+            except Exception as e:
+                print(f"Could not read schema file: {e}")
             
-            with open(schema_file, 'r') as f:
-                schema_data = json.load(f)
+            # Method 3: Fallback to sample schema
+            schemas = {
+                "users": [
+                    {"name": "id", "type": "INT", "primary_key": True, "encrypted": False},
+                    {"name": "username", "type": "VARCHAR(50)", "unique": True, "encrypted": False},
+                    {"name": "email", "type": "VARCHAR(100)", "encrypted": False},
+                    {"name": "password", "type": "TEXT", "encrypted": True},
+                    {"name": "age", "type": "INT", "encrypted": False},
+                    {"name": "is_active", "type": "BOOLEAN", "encrypted": False}
+                ],
+                "products": [
+                    {"name": "id", "type": "INT", "primary_key": True, "encrypted": False},
+                    {"name": "name", "type": "VARCHAR(100)", "encrypted": False},
+                    {"name": "description", "type": "TEXT", "encrypted": False},
+                    {"name": "price", "type": "DECIMAL(10,2)", "encrypted": False},
+                    {"name": "category", "type": "VARCHAR(50)", "encrypted": False},
+                    {"name": "in_stock", "type": "BOOLEAN", "encrypted": False}
+                ],
+                "orders": [
+                    {"name": "id", "type": "INT", "primary_key": True, "encrypted": False},
+                    {"name": "user_id", "type": "INT", "encrypted": False},
+                    {"name": "product_id", "type": "INT", "encrypted": False},
+                    {"name": "quantity", "type": "INT", "encrypted": False},
+                    {"name": "total", "type": "DECIMAL(10,2)", "encrypted": False},
+                    {"name": "status", "type": "VARCHAR(20)", "encrypted": False}
+                ]
+            }
+            return schemas.get(table_name, [])
             
-            # Convert to consistent format
-            schema = []
-            for col_name, col_info in schema_data.get('columns', {}).items():
-                schema.append({
-                    "name": col_name,
-                    "type": col_info.get('type', 'VARCHAR'),
-                    "primary_key": col_info.get('primary_key', False),
-                    "unique": col_info.get('unique', False),
-                    "nullable": col_info.get('nullable', True),
-                    "encrypted": col_info.get('encrypted', False),
-                    "default": col_info.get('default')
-                })
-            
-            return schema
         except Exception as e:
-            print(f"Error getting schema for {table_name}: {e}")
-            return None
+            print(f"API Schema Error for {table_name}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
 
 # WebSocket manager for real-time updates
 class ConnectionManager:
@@ -154,63 +262,83 @@ manager = ConnectionManager()
 async def lifespan(app: FastAPI):
     """Lifespan context manager"""
     # Startup
-    print("🚀 Starting MALDB Professional Interface...")
+    print("🚀 Starting MALDB  Interface...")
     
-    # Initialize with some sample data - USING SIMPLIFIED SYNTAX FOR MALDB
+    # Initialize with some sample data
     try:
         db = DatabaseManager.get_db()
-        # Create sample tables if they don't exist - USING MALDB-COMPATIBLE SYNTAX
+        
+        # First check what tables already exist
+        existing_tables = DatabaseManager.get_tables()
+        print(f"Existing tables: {existing_tables}")
+        
+        # Create sample tables if they don't exist
         sample_tables = [
-            # MALDB syntax: CREATE TABLE name (col1 TYPE, col2 TYPE, ...)
-            "CREATE TABLE users (id INT PRIMARY KEY, username VARCHAR(50), email VARCHAR(100), password TEXT ENCRYPTED, age INT, is_active BOOLEAN)",
-            "CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100), description TEXT, price DECIMAL(10,2), category VARCHAR(50), in_stock BOOLEAN)",
-            "CREATE TABLE orders (id INT PRIMARY KEY, user_id INT, product_id INT, quantity INT, total DECIMAL(10,2), status VARCHAR(20))"
+            ("users", "CREATE TABLE users (id INT PRIMARY KEY, username VARCHAR(50), email VARCHAR(100), password TEXT ENCRYPTED, age INT, is_active BOOLEAN)"),
+            ("products", "CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100), description TEXT, price DECIMAL(10,2), category VARCHAR(50), in_stock BOOLEAN)"),
+            ("orders", "CREATE TABLE orders (id INT PRIMARY KEY, user_id INT, product_id INT, quantity INT, total DECIMAL(10,2), status VARCHAR(20))")
         ]
         
-        for sql in sample_tables:
-            try:
-                db.execute(sql)
-                print(f"✅ Created table: {sql.split(' ')[2]}")
-            except Exception as e:
-                # Table might already exist
-                if "already exists" in str(e).lower() or "exists" in str(e).lower():
-                    print(f"📋 Table already exists: {sql.split(' ')[2]}")
-                else:
-                    print(f"Note: Could not create sample table: {e}")
+        for table_name, sql in sample_tables:
+            if table_name not in existing_tables:
+                try:
+                    result = db.execute(sql)
+                    print(f"✅ Created table: {table_name}")
+                except Exception as e:
+                    print(f"Note: Could not create table {table_name}: {e}")
+            else:
+                print(f"📋 Table already exists: {table_name}")
         
-        # Insert some sample data
-        sample_data = [
-            "INSERT INTO users VALUES (1, 'alice', 'alice@example.com', 'secret123', 25, true)",
-            "INSERT INTO users VALUES (2, 'bob', 'bob@company.com', 'mypassword', 30, true)",
-            "INSERT INTO products VALUES (1, 'Laptop', 'High-performance laptop', 999.99, 'Electronics', true)",
-            "INSERT INTO products VALUES (2, 'Mouse', 'Wireless mouse', 29.99, 'Electronics', true)",
-            "INSERT INTO orders VALUES (1, 1, 1, 2, 1999.98, 'completed')",
-            "INSERT INTO orders VALUES (2, 2, 2, 1, 29.99, 'pending')"
-        ]
-        
-        for sql in sample_data:
+        # Insert some sample data if tables are empty
+        for table_name, _ in sample_tables:
             try:
-                db.execute(sql)
-                print(f"✅ Inserted sample data")
+                # Check if table has data
+                result = db.execute(f"SELECT * FROM {table_name}")
+                if not result:
+                    # Table is empty, insert sample data
+                    if table_name == "users":
+                        insert_sql = [
+                            "INSERT INTO users VALUES (1, 'alice', 'alice@example.com', 'secret123', 25, true)",
+                            "INSERT INTO users VALUES (2, 'bob', 'bob@company.com', 'mypassword', 30, true)"
+                        ]
+                    elif table_name == "products":
+                        insert_sql = [
+                            "INSERT INTO products VALUES (1, 'Laptop', 'High-performance laptop', 999.99, 'Electronics', true)",
+                            "INSERT INTO products VALUES (2, 'Mouse', 'Wireless mouse', 29.99, 'Electronics', true)"
+                        ]
+                    elif table_name == "orders":
+                        insert_sql = [
+                            "INSERT INTO orders VALUES (1, 1, 1, 2, 1999.98, 'completed')",
+                            "INSERT INTO orders VALUES (2, 2, 2, 1, 29.99, 'pending')"
+                        ]
+                    
+                    for sql in insert_sql:
+                        try:
+                            db.execute(sql)
+                            print(f"✅ Inserted sample data into {table_name}")
+                        except Exception as e:
+                            print(f"Note: Could not insert into {table_name}: {e}")
             except Exception as e:
-                # Data might already exist
-                if "constraint" in str(e).lower():
-                    print(f"📋 Data already exists or constraint violation: {e}")
-                else:
-                    print(f"Note: Could not insert sample data: {e}")
+                print(f"Note: Could not check/insert data for {table_name}: {e}")
                 
     except Exception as e:
         print(f"Warning: Database initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
     
     yield
     
     # Shutdown
     print("🛑 Shutting down...")
 
+# Create FastAPI app with documentation enabled
 app = FastAPI(
-    title="MALDB Professional Interface",
+    title="MALDB  Interface",
     description="A minimal RDBMS with column-level encryption",
     version="1.0.0",
+    docs_url="/api/docs",  # Explicitly set docs URL
+    redoc_url="/api/redoc",  # Explicitly set redoc URL
+    openapi_url="/api/openapi.json",  # Explicitly set OpenAPI URL
     lifespan=lifespan
 )
 
@@ -241,7 +369,29 @@ templates = Jinja2Templates(directory=templates_dir)
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Main interface"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    # Get tables to display in sidebar
+    tables = DatabaseManager.get_tables()
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "tables": tables
+    })
+
+@app.get("/api/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    """Custom Swagger UI endpoint"""
+    return get_swagger_ui_html(
+        openapi_url="/api/openapi.json",
+        title="MALDB API Documentation",
+        swagger_ui_parameters={"syntaxHighlight.theme": "monokai"}
+    )
+
+@app.get("/api/redoc", include_in_schema=False)
+async def redoc_html():
+    """ReDoc documentation endpoint"""
+    return get_redoc_html(
+        openapi_url="/api/openapi.json",
+        title="MALDB API Documentation"
+    )
 
 @app.post("/api/execute")
 async def api_execute(request: Request):
@@ -259,6 +409,14 @@ async def api_execute(request: Request):
         
         print(f"Executing SQL: {sql}")
         result = DatabaseManager.execute_query(sql, db_name)
+        
+        # Update table list after certain operations
+        sql_upper = sql.upper()
+        if sql_upper.startswith("CREATE TABLE") or sql_upper.startswith("DROP TABLE"):
+            # Refresh table list
+            tables = DatabaseManager.get_tables(db_name)
+            result["tables_updated"] = tables
+        
         return JSONResponse(result)
     except Exception as e:
         print(f"API Execute Error: {e}")
@@ -272,7 +430,7 @@ async def api_tables():
     """List all tables"""
     try:
         tables = DatabaseManager.get_tables("default")
-        print(f"Found tables: {tables}")
+        print(f"API /api/tables returning: {tables}")
         return JSONResponse({
             "success": True,
             "tables": tables
@@ -290,36 +448,6 @@ async def api_schema(table_name: str):
     """Get table schema"""
     try:
         schema = DatabaseManager.get_table_schema(table_name, "default")
-        
-        if schema is None:
-            # Fallback to sample schema
-            schemas = {
-                "users": [
-                    {"name": "id", "type": "INT", "primary_key": True, "encrypted": False},
-                    {"name": "username", "type": "VARCHAR(50)", "unique": True, "encrypted": False},
-                    {"name": "email", "type": "VARCHAR(100)", "encrypted": False},
-                    {"name": "password", "type": "TEXT", "encrypted": True},
-                    {"name": "age", "type": "INT", "encrypted": False},
-                    {"name": "is_active", "type": "BOOLEAN", "encrypted": False}
-                ],
-                "products": [
-                    {"name": "id", "type": "INT", "primary_key": True, "encrypted": False},
-                    {"name": "name", "type": "VARCHAR(100)", "encrypted": False},
-                    {"name": "description", "type": "TEXT", "encrypted": False},
-                    {"name": "price", "type": "DECIMAL(10,2)", "encrypted": False},
-                    {"name": "category", "type": "VARCHAR(50)", "encrypted": False},
-                    {"name": "in_stock", "type": "BOOLEAN", "encrypted": False}
-                ],
-                "orders": [
-                    {"name": "id", "type": "INT", "primary_key": True, "encrypted": False},
-                    {"name": "user_id", "type": "INT", "encrypted": False},
-                    {"name": "product_id", "type": "INT", "encrypted": False},
-                    {"name": "quantity", "type": "INT", "encrypted": False},
-                    {"name": "total", "type": "DECIMAL(10,2)", "encrypted": False},
-                    {"name": "status", "type": "VARCHAR(20)", "encrypted": False}
-                ]
-            }
-            schema = schemas.get(table_name, [])
         
         return JSONResponse({
             "success": True,
@@ -355,6 +483,30 @@ async def health():
         "version": "1.0.0"
     }
 
+@app.get("/api/info")
+async def api_info():
+    """Get API information"""
+    return {
+        "name": "MALDB API",
+        "version": "1.0.0",
+        "description": "Minimal Relational Database Management System",
+        "endpoints": {
+            "POST /api/execute": "Execute SQL query",
+            "GET /api/tables": "List all tables",
+            "GET /api/schema/{table_name}": "Get table schema",
+            "GET /api/health": "Health check",
+            "GET /api/docs": "API documentation",
+            "GET /": "Web interface"
+        },
+        "features": [
+            "SQL CREATE, INSERT, SELECT, UPDATE, DELETE",
+            "Column-level AES-GCM encryption",
+            "JOIN operations",
+            "Constraint enforcement",
+            "Single-command SQL parser"
+        ]
+    }
+
 def start_web_interface():
     """Start the professional web interface"""
     print("\n" + "=" * 60)
@@ -367,9 +519,10 @@ def start_web_interface():
     print("\n🌐 Starting web server...")
     print("📍 Local: http://localhost:8081")
     print("📚 API Docs: http://localhost:8081/api/docs")
+    print("📚 ReDoc: http://localhost:8081/api/redoc")
     print("\n💡 Quick Start:")
     print("   1. Open http://localhost:8081 in your browser")
-    print("   2. Try these SQL commands:")
+    print("   2. Try these SQL commands (one at a time):")
     print("      CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50), password TEXT ENCRYPTED)")
     print("      INSERT INTO users VALUES (1, 'Alice', 'secret123')")
     print("      SELECT * FROM users")
