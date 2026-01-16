@@ -32,3 +32,5 @@ Thumbs.db
 # Logs
 *.log
 logs/
+maldb.log
+maldb_key.json
