@@ -24,6 +24,20 @@
     --ui-error: #f85149;
     --ui-info: #58a6ff;
     
+    /* Theme variables for new components */
+    --surface-primary: var(--secondary-dark);
+    --surface-secondary: var(--tertiary-dark);
+    --surface-hover: rgba(88, 166, 255, 0.1);
+    --border-light: var(--border-dark);
+    --primary: var(--accent-blue);
+    --primary-light: rgba(88, 166, 255, 0.15);
+    --danger: var(--accent-red);
+    --danger-light: rgba(248, 81, 73, 0.15);
+    --warning: var(--accent-yellow);
+    --warning-light: rgba(210, 153, 34, 0.15);
+    --success: var(--accent-green);
+    --success-light: rgba(35, 134, 54, 0.15);
+    
     /* Shadows */
     --shadow-sm: 0 1px 0 rgba(27,31,36,0.04);
     --shadow-md: 0 3px 6px rgba(0,0,0,0.1);
@@ -172,6 +186,84 @@ body {
 .page-subtitle {
     color: var(--text-secondary);
     font-size: 14px;
+}
+
+/* Database Indicator */
+.database-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    background: var(--surface-secondary);
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border-light);
+    margin-bottom: var(--spacing-lg);
+}
+
+.db-icon {
+    font-size: 14px;
+    color: var(--accent-blue);
+}
+
+/* Database Items */
+.database-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+    margin-bottom: 2px;
+}
+
+.database-item:hover {
+    background: var(--surface-hover);
+    border-color: var(--border-light);
+}
+
+.database-item.active {
+    background: var(--primary-light);
+    color: var(--primary);
+    border-left: 3px solid var(--primary);
+}
+
+.database-actions {
+    opacity: 0;
+    transition: opacity 0.2s;
+    display: flex;
+    gap: 4px;
+}
+
+.database-item:hover .database-actions {
+    opacity: 1;
+}
+
+.db-action-btn {
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.db-action-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+.db-action-btn.danger:hover {
+    background: var(--danger-light);
+    color: var(--danger);
 }
 
 /* Cards */
@@ -406,6 +498,161 @@ body {
     font-weight: 600;
 }
 
+/* Modals */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--surface-primary);
+    border: 1px solid var(--border-dark);
+    border-radius: var(--radius-lg);
+    width: 400px;
+    max-width: 90%;
+    box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color 0.2s;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+    background: var(--surface-secondary);
+}
+
+.modal-body {
+    padding: var(--spacing-lg);
+}
+
+.modal-footer {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-top: 1px solid var(--border-light);
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+}
+
+/* Form Elements */
+.form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--surface-secondary);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.1);
+}
+
+.form-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+}
+
+.warning-text {
+    color: var(--warning);
+    font-size: 13px;
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--warning-light);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--warning);
+}
+
+/* Buttons */
+.btn {
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-primary {
+    background: var(--accent-green);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2ea043;
+}
+
+.btn-secondary {
+    background: var(--surface-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+}
+
+.btn-secondary:hover {
+    background: var(--surface-hover);
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #da3633;
+}
+
 /* Status Indicators */
 .status-indicator {
     display: inline-block;
@@ -423,6 +670,62 @@ body {
 .status-warning {
     background: var(--ui-warning);
     box-shadow: 0 0 0 2px rgba(187, 128, 9, 0.2);
+}
+
+/* Notifications */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background: var(--surface-primary);
+    border: 1px solid var(--border-dark);
+    border-left: 4px solid var(--primary);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    z-index: 1001;
+    animation: slideIn 0.3s ease;
+    max-width: 400px;
+}
+
+.notification-success {
+    border-left-color: var(--success);
+}
+
+.notification-error {
+    border-left-color: var(--danger);
+}
+
+.notification-warning {
+    border-left-color: var(--warning);
+}
+
+.notification button {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0;
+}
+
+.notification button:hover {
+    color: var(--text-primary);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
 
 /* Badges */
@@ -451,6 +754,22 @@ body {
     color: var(--ui-error);
 }
 
+/* New badge variants from your additions */
+.badge-success-light {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.badge-warning-light {
+    background: var(--warning-light);
+    color: var(--warning);
+}
+
+.badge-danger-light {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
 /* Loading */
 .loading {
     display: flex;
@@ -475,7 +794,7 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Toast Notifications */
+/* Toast Notifications (kept for compatibility) */
 .toast-container {
     position: fixed;
     top: var(--spacing-lg);
@@ -493,17 +812,6 @@ body {
     max-width: 400px;
     box-shadow: var(--shadow-lg);
     animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
 }
 
 /* Responsive */
@@ -525,5 +833,9 @@ body {
     .result-stats {
         flex-direction: column;
         gap: var(--spacing-sm);
+    }
+    
+    .modal-content {
+        width: 95%;
     }
 }

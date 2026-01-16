@@ -1,16 +1,20 @@
-// MALDB Professional Interface - JavaScript
+// MALDB Professional Interface - JavaScript with Multi-Database Support
 class MALDBInterface {
     constructor() {
         this.currentPage = 'query';
         this.websocket = null;
         this.queryHistory = [];
+        this.currentDatabase = 'default';
         this.init();
     }
     
     init() {
         this.bindEvents();
-        this.loadTables();
+        this.loadDatabases();
         this.setupCodeEditor();
+        
+        // Start on query page
+        this.navigateTo('query');
     }
     
     bindEvents() {
@@ -19,7 +23,9 @@ class MALDBInterface {
             item.addEventListener('click', (e) => {
                 e.preventDefault();
                 const page = item.dataset.page;
-                this.navigateTo(page);
+                if (page) {
+                    this.navigateTo(page);
+                }
             });
         });
         
@@ -37,6 +43,7 @@ class MALDBInterface {
         // Quick actions
         document.querySelectorAll('.quick-action').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.preventDefault();
                 const sql = e.currentTarget.dataset.sql;
                 this.insertIntoEditor(sql);
             });
@@ -63,6 +70,71 @@ class MALDBInterface {
                 this.executeQuery();
             });
         }
+        
+        // Modal close on outside click
+        document.addEventListener('click', (event) => {
+            const modals = ['createDatabaseModal', 'deleteDatabaseModal'];
+            
+            modals.forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                if (modal && modal.style.display === 'block' && event.target === modal) {
+                    if (modalId === 'createDatabaseModal') {
+                        this.hideCreateDatabaseModal();
+                    } else if (modalId === 'deleteDatabaseModal') {
+                        this.hideDeleteDatabaseModal();
+                    }
+                }
+            });
+        });
+        
+        // Escape key to close modals
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                if (document.getElementById('createDatabaseModal').style.display === 'block') {
+                    this.hideCreateDatabaseModal();
+                } else if (document.getElementById('deleteDatabaseModal').style.display === 'block') {
+                    this.hideDeleteDatabaseModal();
+                }
+            }
+        });
+        
+        // Clear history button
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+        if (clearHistoryBtn) {
+            clearHistoryBtn.addEventListener('click', () => this.clearHistory());
+        }
+        
+        // Create database form submission
+        const createDatabaseForm = document.getElementById('createDatabaseForm');
+        if (createDatabaseForm) {
+            createDatabaseForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.createDatabase();
+            });
+        }
+        
+        // Confirm delete database button
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        if (confirmDeleteBtn) {
+            confirmDeleteBtn.addEventListener('click', () => this.confirmDeleteDatabase());
+        }
+        
+        // Cancel delete database button
+        const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+        if (cancelDeleteBtn) {
+            cancelDeleteBtn.addEventListener('click', () => this.hideDeleteDatabaseModal());
+        }
+        
+        // Close modal buttons
+        const closeCreateModal = document.querySelector('#createDatabaseModal .close');
+        if (closeCreateModal) {
+            closeCreateModal.addEventListener('click', () => this.hideCreateDatabaseModal());
+        }
+        
+        const closeDeleteModal = document.querySelector('#deleteDatabaseModal .close');
+        if (closeDeleteModal) {
+            closeDeleteModal.addEventListener('click', () => this.hideDeleteDatabaseModal());
+        }
     }
     
     setupCodeEditor() {
@@ -82,10 +154,9 @@ class MALDBInterface {
             // Add some default content for demo
             editor.value = '-- Welcome to MALDB Professional Interface\n' +
                          '-- Try these examples:\n\n' +
-                         'CREATE TABLE users (id INT PRIMARY KEY, username VARCHAR(50), email VARCHAR(100), password TEXT ENCRYPTED, age INT, is_active BOOLEAN)\n\n' +
-                         'INSERT INTO users VALUES (1, \'alice\', \'alice@example.com\', \'secret123\', 25, true)\n' +
-                         'INSERT INTO users VALUES (2, \'bob\', \'bob@company.com\', \'mypassword\', 30, true)\n\n' +
-                         'SELECT * FROM users';
+                         'SELECT * FROM users;\n\n' +
+                         'CREATE TABLE test (id INT PRIMARY KEY, name VARCHAR(50), data TEXT ENCRYPTED);\n\n' +
+                         'INSERT INTO test VALUES (1, \'John\', \'secret data\');';
         }
     }
     
@@ -135,12 +206,16 @@ class MALDBInterface {
         this.showLoading();
         
         try {
+            console.log(`Executing query on ${this.currentDatabase}: ${sql}`);
             const response = await fetch('/api/execute', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ sql, database: 'default' })
+                body: JSON.stringify({ 
+                    sql, 
+                    database: this.currentDatabase 
+                })
             });
             
             const result = await response.json();
@@ -148,7 +223,13 @@ class MALDBInterface {
             if (result.success) {
                 this.displayResults(result);
                 this.addToHistory(sql, result);
-                this.showToast('Query executed successfully', 'success');
+                this.showToast(`Query executed successfully (${result.execution_time}ms)`, 'success');
+                
+                // Update table list if needed
+                const sqlUpper = sql.toUpperCase();
+                if (sqlUpper.startsWith("CREATE TABLE") || sqlUpper.startsWith("DROP TABLE")) {
+                    await this.loadTables();
+                }
             } else {
                 this.displayError(result.error);
                 this.showToast('Error: ' + result.error, 'error');
@@ -166,8 +247,13 @@ class MALDBInterface {
         const container = document.getElementById('resultsContainer');
         if (!container) return;
         
+        // Add database info to results
+        const dbInfo = result.database ? `<div style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 8px;">
+            Database: <strong>${this.escapeHtml(result.database)}</strong>
+        </div>` : '';
+        
         if (!result.result || result.result.length === 0) {
-            container.innerHTML = '<div class="result-header">' +
+            container.innerHTML = dbInfo + '<div class="result-header">' +
                                 '<div class="result-stats">' +
                                 '<div class="stat-item success">' +
                                 '<span class="status-indicator status-online"></span>' +
@@ -185,7 +271,7 @@ class MALDBInterface {
         }
         
         // Build table HTML
-        let tableHTML = '<div class="result-header">' +
+        let tableHTML = dbInfo + '<div class="result-header">' +
                        '<div class="result-stats">' +
                        '<div class="stat-item success">' +
                        '<span class="status-indicator status-online"></span>' +
@@ -213,6 +299,10 @@ class MALDBInterface {
                 for (let i = 0; i < firstRow.length; i++) {
                     tableHTML += '<th>Column ' + (i + 1) + '</th>';
                 }
+            } else if (typeof firstRow === 'object') {
+                Object.keys(firstRow).forEach(key => {
+                    tableHTML += '<th>' + this.escapeHtml(key) + '</th>';
+                });
             }
         }
         
@@ -264,19 +354,131 @@ class MALDBInterface {
                              '</div>';
     }
     
+    async loadDatabases() {
+        try {
+            console.log('Loading databases...');
+            const response = await fetch('/api/databases');
+            const data = await response.json();
+            
+            const databaseList = document.getElementById('databaseList');
+            const currentDbName = document.getElementById('currentDbName');
+            const tableCount = document.getElementById('tableCount');
+            
+            if (data.success && data.databases && data.databases.length > 0) {
+                console.log(`Found ${data.databases.length} databases`);
+                databaseList.innerHTML = '';
+                
+                // Sort databases: default always first, then others alphabetically
+                const sortedDatabases = [...data.databases].sort((a, b) => {
+                    if (a.name === 'default') return -1;
+                    if (b.name === 'default') return 1;
+                    return a.name.localeCompare(b.name);
+                });
+                
+                console.log('Sorted databases:', sortedDatabases.map(db => db.name));
+                
+                // Find current database info
+                let currentDbInfo = null;
+                
+                sortedDatabases.forEach(db => {
+                    const dbItem = document.createElement('div');
+                    const isCurrent = db.name === data.current;
+                    
+                    if (isCurrent) {
+                        this.currentDatabase = db.name;
+                        currentDbInfo = db;
+                        console.log(`Current database: ${db.name} with ${db.tables} tables`);
+                    }
+                    
+                    dbItem.className = `nav-item database-item ${isCurrent ? 'active' : ''}`;
+                    dbItem.innerHTML = `
+                        <span style="display: flex; align-items: center; gap: 8px;">
+                            <span>${isCurrent ? '🗃️' : '📁'}</span>
+                            <span>${this.escapeHtml(db.name)}</span>
+                        </span>
+                        <div class="database-actions" style="margin-left: auto; display: flex; gap: 4px;">
+                            ${!isCurrent ? `
+                            <button class="db-action-btn" onclick="maldb.switchDatabase('${this.escapeSingleQuotes(db.name)}')" title="Switch to ${this.escapeHtml(db.name)}">
+                                ➡️
+                            </button>
+                            ` : ''}
+                            ${db.name !== 'default' ? `
+                            <button class="db-action-btn danger" onclick="maldb.showDeleteDatabaseModal('${this.escapeSingleQuotes(db.name)}')" title="Delete ${this.escapeHtml(db.name)}">
+                                🗑️
+                            </button>
+                            ` : ''}
+                        </div>
+                    `;
+                    
+                    // Add table count badge
+                    if (db.tables > 0) {
+                        const badge = document.createElement('span');
+                        badge.className = 'badge badge-success';
+                        badge.style.marginLeft = '8px';
+                        badge.textContent = db.tables;
+                        dbItem.appendChild(badge);
+                    }
+                    
+                    databaseList.appendChild(dbItem);
+                });
+                
+                // Update current database indicator
+                if (currentDbName) {
+                    currentDbName.textContent = this.currentDatabase;
+                }
+                
+                // Update table count in header
+                if (tableCount && currentDbInfo) {
+                    tableCount.textContent = `${currentDbInfo.tables} table${currentDbInfo.tables !== 1 ? 's' : ''}`;
+                } else if (tableCount) {
+                    // If currentDbInfo not found, try to find it in the sorted list
+                    const foundDb = sortedDatabases.find(db => db.name === this.currentDatabase);
+                    if (foundDb) {
+                        tableCount.textContent = `${foundDb.tables} table${foundDb.tables !== 1 ? 's' : ''}`;
+                    } else {
+                        tableCount.textContent = '0 tables';
+                    }
+                }
+                
+                // Load tables for current database (only if we're on the tables page)
+                if (this.currentPage === 'tables') {
+                    await this.loadTables();
+                }
+            } else {
+                console.error('No databases found or API error:', data);
+                // Show default state
+                if (databaseList) {
+                    databaseList.innerHTML = '<div style="padding: 12px; color: var(--text-tertiary); font-size: 13px;">No databases found</div>';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading databases:', error);
+            this.showNotification('Failed to load databases', 'error');
+        }
+    }
+    
     async loadTables() {
         const container = document.getElementById('tablesContainer');
-        if (!container) return;
+        if (!container || this.currentPage !== 'tables') return;
         
         container.innerHTML = '<div class="loading">Loading tables...</div>';
         
         try {
+            console.log(`Loading tables for database: ${this.currentDatabase}`);
             const response = await fetch('/api/tables');
             const data = await response.json();
             
-            if (!data.success || !data.tables || data.tables.length === 0) {
+            if (!data.success || !data.tables) {
                 container.innerHTML = '<div class="no-tables" style="text-align: center; padding: 40px; color: var(--text-tertiary);">' +
-                                    '<p>No tables found. Create a table to get started.</p>' +
+                                    `<p>Failed to load tables: ${data.error || 'Unknown error'}</p>` +
+                                    '<button class="toolbar-btn" onclick="maldb.loadTables()">Retry</button>' +
+                                    '</div>';
+                return;
+            }
+            
+            if (data.tables.length === 0) {
+                container.innerHTML = '<div class="no-tables" style="text-align: center; padding: 40px; color: var(--text-tertiary);">' +
+                                    `<p>No tables found in database '${this.escapeHtml(data.database || this.currentDatabase)}'. Create a table to get started.</p>` +
                                     '<button class="toolbar-btn primary" onclick="maldb.insertIntoEditor(\'CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50), email VARCHAR(100), password TEXT ENCRYPTED)\')">' +
                                     'Create Example Table' +
                                     '</button>' +
@@ -284,7 +486,10 @@ class MALDBInterface {
                 return;
             }
             
-            let tablesHTML = '<div class="tables-grid">';
+            let tablesHTML = `<div style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 16px;">
+                Database: <strong>${this.escapeHtml(data.database || this.currentDatabase)}</strong> - ${data.tables.length} table${data.tables.length !== 1 ? 's' : ''}
+            </div>` +
+            '<div class="tables-grid">';
             
             for (const tableName of data.tables) {
                 try {
@@ -317,7 +522,7 @@ class MALDBInterface {
                     }
                     
                     const escapedTableName = this.escapeHtml(tableName);
-                    const safeTableName = escapedTableName.replace(/'/g, "\\'");
+                    const safeTableName = this.escapeSingleQuotes(tableName);
                     
                     tablesHTML += '<div class="table-card">' +
                                  '<div class="table-header">' +
@@ -342,7 +547,7 @@ class MALDBInterface {
                     console.error('Error loading schema for ' + tableName + ':', schemaError);
                     // Show table without schema
                     const escapedTableName = this.escapeHtml(tableName);
-                    const safeTableName = escapedTableName.replace(/'/g, "\\'");
+                    const safeTableName = this.escapeSingleQuotes(tableName);
                     
                     tablesHTML += '<div class="table-card">' +
                                  '<div class="table-header">' +
@@ -371,13 +576,189 @@ class MALDBInterface {
         }
     }
     
+    async switchDatabase(dbName) {
+        try {
+            console.log(`Switching to database: ${dbName}`);
+            
+            const response = await fetch('/api/databases/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: dbName })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.currentDatabase = dbName;
+                
+                // Reload databases FIRST to update the sidebar
+                await this.loadDatabases();
+                
+                // Show success message
+                this.showNotification(`Switched to database '${dbName}'`, 'success');
+                
+                // Clear query editor and results
+                const editor = document.getElementById('sqlEditor');
+                if (editor) {
+                    editor.value = `-- Switched to database '${dbName}'\n-- Try: SELECT * FROM users;`;
+                }
+                
+                const resultsContainer = document.getElementById('resultsContainer');
+                if (resultsContainer) {
+                    resultsContainer.innerHTML = `
+                        <div class="loading">
+                            Switched to database '${dbName}'. Enter a new SQL command.
+                        </div>
+                    `;
+                }
+                
+                // If on tables page, reload tables
+                if (this.currentPage === 'tables') {
+                    await this.loadTables();
+                }
+            } else {
+                this.showNotification(`Error: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error switching database:', error);
+            this.showNotification('Error switching database', 'error');
+        }
+    }
+    
+    showCreateDatabaseModal() {
+        document.getElementById('newDatabaseName').value = '';
+        document.getElementById('createDatabaseModal').style.display = 'block';
+        document.getElementById('newDatabaseName').focus();
+    }
+    
+    hideCreateDatabaseModal() {
+        document.getElementById('createDatabaseModal').style.display = 'none';
+    }
+    
+    async createDatabase() {
+        const dbName = document.getElementById('newDatabaseName').value.trim();
+        
+        if (!dbName) {
+            this.showNotification('Please enter a database name', 'error');
+            return;
+        }
+        
+        // Validate name
+        if (!/^[a-zA-Z0-9_]+$/.test(dbName)) {
+            this.showNotification('Database name can only contain letters, numbers, and underscores', 'error');
+            return;
+        }
+        
+        if (dbName.toLowerCase() === 'default') {
+            this.showNotification('Cannot create database named "default". It already exists.', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/databases/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: dbName })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification(`Database '${dbName}' created successfully`, 'success');
+                this.hideCreateDatabaseModal();
+                
+                // Reload databases FIRST to update the sidebar
+                await this.loadDatabases();
+                
+                // Then switch to the new one
+                await this.switchDatabase(dbName);
+            } else {
+                this.showNotification(`Error: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error creating database:', error);
+            this.showNotification('Error creating database', 'error');
+        }
+    }
+    
+    showDeleteDatabaseModal(dbName) {
+        document.getElementById('deleteDbName').textContent = dbName;
+        document.getElementById('deleteDatabaseModal').style.display = 'block';
+        // Store the database name to delete
+        document.getElementById('deleteDatabaseModal').dataset.dbName = dbName;
+    }
+    
+    hideDeleteDatabaseModal() {
+        document.getElementById('deleteDatabaseModal').style.display = 'none';
+        delete document.getElementById('deleteDatabaseModal').dataset.dbName;
+    }
+    
+    async confirmDeleteDatabase() {
+        const dbName = document.getElementById('deleteDatabaseModal').dataset.dbName;
+        
+        if (!dbName) return;
+        
+        if (dbName === 'default') {
+            this.showNotification('Cannot delete the default database', 'error');
+            this.hideDeleteDatabaseModal();
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/databases/${dbName}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification(`Database '${dbName}' deleted successfully`, 'success');
+                this.hideDeleteDatabaseModal();
+                
+                // Reload databases
+                await this.loadDatabases();
+                
+                // Reload tables (will show empty for default)
+                if (this.currentPage === 'tables') {
+                    await this.loadTables();
+                }
+            } else {
+                this.showNotification(`Error: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting database:', error);
+            this.showNotification('Error deleting database', 'error');
+        }
+    }
+    
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <span>${this.escapeHtml(message)}</span>
+            <button onclick="this.parentElement.remove()">&times;</button>
+        `;
+        
+        // Add to page
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, 5000);
+    }
+    
     addToHistory(sql, result) {
         const historyItem = {
             sql,
             timestamp: new Date().toISOString(),
             success: result.success,
             executionTime: result.execution_time || 0,
-            rowsAffected: result.affected_rows || 0
+            rowsAffected: result.affected_rows || 0,
+            database: result.database || this.currentDatabase
         };
         
         this.queryHistory.unshift(historyItem);
@@ -438,7 +819,7 @@ class MALDBInterface {
         this.queryHistory.forEach((item, index) => {
             const time = new Date(item.timestamp).toLocaleTimeString();
             const date = new Date(item.timestamp).toLocaleDateString();
-            const safeSql = item.sql.replace(/'/g, "\\'").replace(/"/g, '\\"');
+            const safeSql = this.escapeSingleQuotes(item.sql);
             
             historyHTML += '<div class="history-item" style="' +
                           'background: ' + (item.success ? 'rgba(35, 134, 54, 0.05)' : 'rgba(248, 81, 73, 0.05)') + ';' +
@@ -450,7 +831,7 @@ class MALDBInterface {
                           ' onclick="maldb.insertIntoEditor(\'' + safeSql + '\')">' +
                           '<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">' +
                           '<span style="font-size: 12px; color: var(--text-tertiary);">' +
-                          date + ' ' + time +
+                          date + ' ' + time + ' (' + (item.database || 'default') + ')' +
                           '</span>' +
                           '<span style="font-size: 12px; color: ' + (item.success ? 'var(--ui-success)' : 'var(--ui-error)') + ';">' +
                           (item.success ? '✓ Success' : '✗ Failed') + ' (' + item.executionTime + 'ms)' +
@@ -553,8 +934,10 @@ class MALDBInterface {
     showLoading() {
         const btn = document.getElementById('executeBtn');
         if (btn) {
+            const originalText = btn.innerHTML;
             btn.innerHTML = '<span class="loading-spinner"></span> Executing...';
             btn.disabled = true;
+            btn.dataset.originalText = originalText;
         }
         
         // Add loading spinner CSS if not present
@@ -580,8 +963,8 @@ class MALDBInterface {
     
     hideLoading() {
         const btn = document.getElementById('executeBtn');
-        if (btn) {
-            btn.innerHTML = 'Execute Query';
+        if (btn && btn.dataset.originalText) {
+            btn.innerHTML = btn.dataset.originalText;
             btn.disabled = false;
         }
     }
@@ -611,7 +994,7 @@ class MALDBInterface {
                          '</div>' +
                          '<div style="flex: 1;">' +
                          '<div style="font-weight: 600; margin-bottom: 4px;">' + (titles[type] || titles.info) + '</div>' +
-                         '<div style="font-size: 14px; color: #8b949e;">' + message + '</div>' +
+                         '<div style="font-size: 14px; color: #8b949e;">' + this.escapeHtml(message) + '</div>' +
                          '</div>' +
                          '<button onclick="this.parentElement.parentElement.remove()" style="' +
                          'margin-left: auto; ' +
@@ -643,9 +1026,15 @@ class MALDBInterface {
     }
     
     escapeHtml(text) {
+        if (text === null || text === undefined) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    escapeSingleQuotes(text) {
+        if (text === null || text === undefined) return '';
+        return text.replace(/'/g, "\\'").replace(/"/g, '\\"');
     }
 }
 
